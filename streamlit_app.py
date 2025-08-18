@@ -293,3 +293,4 @@ with st.form(key="chat_form", clear_on_submit=True):
         
         # Rerun the app to update the chat display
         st.rerun()
+

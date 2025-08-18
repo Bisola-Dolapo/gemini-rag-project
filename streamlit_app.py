@@ -1,9 +1,8 @@
 import streamlit as st
 import os
-from dotenv import load_dotenv
 import google.generativeai as genai
 
-# --- ADD THE FIX HERE ---
+# --- FIX for pysqlite3 on Streamlit Cloud ---
 __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
@@ -24,12 +23,11 @@ if not os.path.exists("chroma_store"):
 # Core RAG-Gemini Logic
 # -----------------------------
 
-# Load environment variables
-load_dotenv()
-
-google_api_key = os.getenv("GOOGLE_API_KEY")
-if not google_api_key:
-    st.error("❌ Missing GOOGLE_API_KEY in .env file.")
+# Access the API key directly from Streamlit's secrets
+try:
+    google_api_key = st.secrets["GOOGLE_API_KEY"]
+except KeyError:
+    st.error("❌ Missing GOOGLE_API_KEY in Streamlit secrets.")
     st.stop()
 
 # Connect to existing Chroma store (persistent)
@@ -208,14 +206,11 @@ with st.sidebar:
     st.markdown(f'<div class="sidebar-metrics"><span class="metric-label">KB Hits</span><br><span class="metric-value">{kb_hits}</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="sidebar-metrics"><span class="metric-label">General Responses</span><br><span class="metric-value">{general_responses}</span></div>', unsafe_allow_html=True)
 
-    st.markdown(f'<div class="sidebar-metrics"><span class="metric-label">Total Questions</span><br><span class="metric-value">{total_questions}</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sidebar-metrics"><span class="metric-label">KB Hits</span><br><span class="metric-value">{kb_hits}</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sidebar-metrics"><span class="metric-label">General Responses</span><br><span class="metric-value">{general_responses}</span></div>', unsafe_allow_html=True)
 # ---------------- Main Content ----------------
 st.title("Conversation")
 
 # Display the conversation history
-for turn in st.session_state.get("history", []):
+for i, turn in enumerate(st.session_state.get("history", [])):
     role_class = "user-message" if turn["role"] == "user" else "bot-message"
     with st.container():
         st.markdown(f'<div class="chat-message {role_class}">{turn["content"]}</div>', unsafe_allow_html=True)
@@ -223,8 +218,8 @@ for turn in st.session_state.get("history", []):
             with st.expander("View KB Context"):
                 st.markdown(f'<div class="context-box">{turn["context"]}</div>', unsafe_allow_html=True)
         if turn["role"] == "assistant":
-            # Using a simple button for demonstration
-            st.button("Copy Answer", key=f"copy_btn_{len(st.session_state['history'])}")
+            # Using a unique key for each button to prevent duplicate key errors
+            st.button("Copy Answer", key=f"copy_btn_{i}")
 
 # Create the input area at the bottom
 with st.form(key="chat_form", clear_on_submit=True):

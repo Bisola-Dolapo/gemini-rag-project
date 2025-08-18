@@ -97,7 +97,7 @@ body {
 .chat-message {
     padding: 10px 15px;
     border-radius: 20px;
-    margin-bottom: 15px;
+    margin-bottom: 5px;
     max-width: 80%;
     position: relative;
     font-size: 16px;
@@ -118,6 +118,17 @@ body {
     border-top-left-radius: 5px;
     text-align: left;
 }
+.source-tag {
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: -5px;
+    margin-bottom: 15px;
+    text-align: right;
+}
+.source-tag.bot {
+    text-align: left;
+}
+
 
 /* Sidebar styling */
 .sidebar-metrics {
@@ -218,7 +229,9 @@ for i, turn in enumerate(st.session_state.get("history", [])):
             with st.expander("View KB Context"):
                 st.markdown(f'<div class="context-box">{turn["context"]}</div>', unsafe_allow_html=True)
         if turn["role"] == "assistant":
-            # Using a unique key for each button to prevent duplicate key errors
+            # Add the source tag for the answer
+            if turn.get("source_tag"):
+                st.markdown(f'<p class="source-tag bot">Answer based on {turn["source_tag"]}</p>', unsafe_allow_html=True)
             st.button("Copy Answer", key=f"copy_btn_{i}")
 
 # Create the input area at the bottom
@@ -249,43 +262,57 @@ with st.form(key="chat_form", clear_on_submit=True):
                 
                 # Step 3: Build a single, smarter prompt
                 context = "\n".join(context_texts)
-                prompt = f"""
+                
+                # Check if the retrieved context is relevant (e.g., has some content)
+                is_relevant = bool(context.strip())
+
+                prompt_template = f"""
                 You are a helpful AI assistant. Your goal is to answer the user's question.
-                
+
                 Provided Context:
-                {context}
-                
+                {{context}}
+
                 Conversation so far:
-                {''.join([f"{t['role']}: {t['content']}\n" for t in st.session_state['history']])}
-                
-                User's question: {user_input}
-                
+                {{history}}
+
+                User's question: {{user_input}}
+
                 Instructions:
-                - Use the 'Provided Context' to answer the question if it contains relevant information.
+                - Use the 'Provided Context' to answer the question ONLY if it is highly relevant.
                 - If the context is not relevant, answer the question based on your own knowledge.
                 - Be concise and direct in your response.
-                
+
                 Your reply:
                 """
-                
+
+                # Determine which prompt to use based on context relevance
+                if is_relevant:
+                    prompt = prompt_template.format(
+                        context=context, 
+                        history=''.join([f"{t['role']}: {t['content']}\n" for t in st.session_state['history']]), 
+                        user_input=user_input
+                    )
+                    source_tag = "knowledge base"
+                else:
+                    # Use a simpler prompt for general knowledge questions
+                    prompt = f"Answer the following question based on your own knowledge: {user_input}"
+                    source_tag = "Gemini's general knowledge"
+
                 # Step 4: Generate response
                 response = gemini_model.generate_content(prompt)
                 bot_reply = response.text.strip()
                 
-                # Check if the bot used the knowledge base for metrics
-                kb_used = "knowledge base" in bot_reply.lower()
-
             except Exception as e:
                 bot_reply = f"❌ An error occurred: {e}"
-                kb_used = False
+                source_tag = "error"
             
         # Add the assistant's response and context to history
         st.session_state["history"].append({
             "role": "assistant",
             "content": bot_reply,
-            "context": context if kb_used else None
+            "context": context if is_relevant else None,
+            "source_tag": source_tag
         })
         
         # Rerun the app to update the chat display
         st.rerun()
-

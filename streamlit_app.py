@@ -223,7 +223,7 @@ for i, turn in enumerate(st.session_state.get("history", [])):
 
 # Create the input area at the bottom
 with st.form(key="chat_form", clear_on_submit=True):
-    col1, col2 = st.columns([0.85, 0.15])
+    col1, col2 = st.columns([0.7, 0.3])
     with col1:
         user_input = st.text_input("", placeholder="Type your question here...", label_visibility="collapsed", key="user_input")
     with col2:
@@ -288,3 +288,4 @@ with st.form(key="chat_form", clear_on_submit=True):
         
         # Rerun the app to update the chat display
         st.rerun()
+

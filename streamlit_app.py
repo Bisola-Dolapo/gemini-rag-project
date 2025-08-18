@@ -248,25 +248,25 @@ with st.form(key="chat_form", clear_on_submit=True):
                 context_texts = results["documents"][0] if results["documents"] else []
                 
                 # Step 3: Build a single, smarter prompt
-                context = "\n".join(context_texts)
-                prompt = f"""
-                You are a helpful AI assistant. Your goal is to answer the user's question.
-                
-                Provided Context:
-                {context}
-                
-                Conversation so far:
-                {''.join([f"{t['role']}: {t['content']}\n" for t in st.session_state['history']])}
-                
-                Instructions:
-                1. Answer the user's question to the best of your ability.
-                2. ONLY use the 'Provided Context' if it is highly relevant.
-                3. If the context is not relevant, answer based on your general knowledge.
-                4. Be clear about the source of your information. For example, if you use the context, you might say "Based on the knowledge base..."
-                5. If you use your general knowledge, you might say "Based on my general knowledge..." or similar phrasing.
-                
-                Your reply:
-                """
+context = "\n".join(context_texts)
+prompt = f"""
+You are a helpful AI assistant. Your goal is to answer the user's question.
+
+Provided Context:
+{context}
+
+Conversation so far:
+{''.join([f"{t['role']}: {t['content']}\n" for t in st.session_state['history']])}
+
+User's question: {user_input}
+
+Instructions:
+- Use the 'Provided Context' to answer the question if it contains relevant information.
+- If the context is not relevant, answer the question based on your own knowledge.
+- Be concise and direct in your response.
+
+Your reply:
+"""
                 
                 # Step 4: Generate response
                 response = gemini_model.generate_content(prompt)
@@ -288,4 +288,5 @@ with st.form(key="chat_form", clear_on_submit=True):
         
         # Rerun the app to update the chat display
         st.rerun()
+
 

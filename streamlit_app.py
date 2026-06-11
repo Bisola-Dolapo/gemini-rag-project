@@ -181,15 +181,15 @@ header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-
-# Mock metrics based on the session state
-total_questions = len([turn for turn in st.session_state.get("history", []) if turn["role"] == "user"])
-kb_hits = sum(1 for turn in st.session_state.get("history", []) if turn.get("context") and turn["role"]=="assistant")
-general_responses = total_questions - kb_hits
-
-# Initialize conversation history in session state
+# BUG FIX 1: Initialize session state BEFORE computing metrics from it
 if "history" not in st.session_state:
     st.session_state["history"] = []
+
+# BUG FIX 2: Corrected metric logic — kb_hits now reads the stored `kb_used`
+# flag on each assistant turn, rather than checking for context presence
+total_questions = sum(1 for turn in st.session_state["history"] if turn["role"] == "user")
+kb_hits = sum(1 for turn in st.session_state["history"] if turn["role"] == "assistant" and turn.get("kb_used"))
+general_responses = total_questions - kb_hits
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
@@ -210,7 +210,7 @@ with st.sidebar:
 st.title("Conversation")
 
 # Display the conversation history
-for i, turn in enumerate(st.session_state.get("history", [])):
+for i, turn in enumerate(st.session_state["history"]):
     role_class = "user-message" if turn["role"] == "user" else "bot-message"
     with st.container():
         st.markdown(f'<div class="chat-message {role_class}">{turn["content"]}</div>', unsafe_allow_html=True)
@@ -218,8 +218,11 @@ for i, turn in enumerate(st.session_state.get("history", [])):
             with st.expander("View KB Context"):
                 st.markdown(f'<div class="context-box">{turn["context"]}</div>', unsafe_allow_html=True)
         if turn["role"] == "assistant":
-            # Using a unique key for each button to prevent duplicate key errors
-            st.button("Copy Answer", key=f"copy_btn_{i}")
+            # NOTE: Streamlit cannot access the clipboard natively.
+            # This button displays the answer text so users can copy it manually.
+            # For true clipboard support, use st.code() or a JS component.
+            with st.expander("📋 Copy Answer", expanded=False):
+                st.code(turn["content"], language=None)
 
 # Create the input area at the bottom
 with st.form(key="chat_form", clear_on_submit=True):
@@ -235,6 +238,11 @@ with st.form(key="chat_form", clear_on_submit=True):
 
         # --- Perform the RAG-Gemini Logic ---
         with st.spinner("Thinking..."):
+            # BUG FIX 3: Initialize context and kb_used before the try block
+            # so they are always defined even if an exception occurs
+            context = ""
+            kb_used = False
+
             try:
                 # Step 1: Embed query
                 query_embedding = embedding_model.encode([user_input]).tolist()
@@ -246,9 +254,14 @@ with st.form(key="chat_form", clear_on_submit=True):
                 )
                 
                 context_texts = results["documents"][0] if results["documents"] else []
-                
-                # Step 3: Build a single, smarter prompt
                 context = "\n".join(context_texts)
+
+                # Step 3: Build prompt — only include role/content to avoid
+                # leaking raw context objects into the conversation history
+                conversation_so_far = "".join(
+                    [f"{t['role']}: {t['content']}\n" for t in st.session_state["history"]]
+                )
+
                 prompt = f"""
                 You are a helpful AI assistant. Your goal is to answer the user's question.
                 
@@ -256,7 +269,7 @@ with st.form(key="chat_form", clear_on_submit=True):
                 {context}
                 
                 Conversation so far:
-                {''.join([f"{t['role']}: {t['content']}\n" for t in st.session_state['history']])}
+                {conversation_so_far}
                 
                 Instructions:
                 1. Answer the user's question to the best of your ability.
@@ -277,15 +290,15 @@ with st.form(key="chat_form", clear_on_submit=True):
 
             except Exception as e:
                 bot_reply = f"❌ An error occurred: {e}"
-                kb_used = False
             
-        # Add the assistant's response and context to history
+        # BUG FIX 2 (continued): Store explicit kb_used flag instead of relying
+        # on context presence, which was unreliable for metric counting
         st.session_state["history"].append({
             "role": "assistant",
             "content": bot_reply,
-            "context": context if kb_used else None
+            "context": context if kb_used else None,
+            "kb_used": kb_used,
         })
         
         # Rerun the app to update the chat display
         st.rerun()
-

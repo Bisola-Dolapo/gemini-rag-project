@@ -3,6 +3,7 @@ import os
 import google.generativeai as genai
 
 # --- FIX for pysqlite3 on Streamlit Cloud ---
+# Must happen before chromadb is imported
 __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
@@ -11,12 +12,21 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 import zipfile
 
-# Check if the database is unzipped. If not, unzip it.
-if not os.path.exists("chroma_store"):
-    print("Database not found. Unzipping...")
-    with zipfile.ZipFile("chroma_store.zip", 'r') as zip_ref:
-        zip_ref.extractall()
-    print("Database unzipped successfully!")
+
+def ensure_chroma_store_unzipped():
+    """Unzip chroma_store.zip if the store directory is missing.
+    Called at startup and inside get_chroma_collection() so the store
+    is always present even after Streamlit Cloud hibernation wipes the fs."""
+    if not os.path.exists("chroma_store"):
+        if not os.path.exists("chroma_store.zip"):
+            st.error("❌ chroma_store.zip not found. Please add it to the repo root.")
+            st.stop()
+        with zipfile.ZipFile("chroma_store.zip", "r") as zip_ref:
+            zip_ref.extractall()
+
+
+# Unzip once at startup (fast no-op if already present)
+ensure_chroma_store_unzipped()
 
 
 # -----------------------------
@@ -30,9 +40,14 @@ except KeyError:
     st.error("❌ Missing GOOGLE_API_KEY in Streamlit secrets.")
     st.stop()
 
+
 # Connect to existing Chroma store (persistent)
 @st.cache_resource
 def get_chroma_collection():
+    # Re-unzip if the filesystem was wiped after hibernation.
+    # @st.cache_resource survives across reruns but NOT across cold restarts,
+    # so this guard only matters for mid-session filesystem evictions.
+    ensure_chroma_store_unzipped()
     try:
         chroma_client = chromadb.PersistentClient(path="chroma_store")
         collection = chroma_client.get_or_create_collection(name="gemini_rag")

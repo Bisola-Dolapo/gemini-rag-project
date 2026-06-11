@@ -1,4 +1,4 @@
-﻿streamlit # add a comment
+# streamlit is pinned below with a specific version
 altair==5.5.0
 annotated-types==0.7.0
 anyio==4.10.0
@@ -124,4 +124,3 @@ watchfiles==1.1.0
 websocket-client==1.8.0
 websockets==15.0.1
 zipp==3.23.0
-
